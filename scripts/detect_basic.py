@@ -1,35 +1,54 @@
-from scapy.all import rdpcap   # Permet de lire un fichier de capture (.cap / .pcap)
-from scapy.layers.dot11 import Dot11Deauth  # Type de trame WiFi : désauthentification
+from scapy.all import rdpcap
+from scapy.layers.dot11 import Dot11Deauth, Dot11ProbeReq, Dot11
 
-
-# Fonction principale de détection
-def detect_deauth(pcap_file):
+def analyze_pcap(pcap_file):
     
-    # Charger tous les paquets du fichier capture
     packets = rdpcap(pcap_file)
 
-    # Compteur de trames de désauthentification
-    count = 0
+    deauth_count = 0
+    probe_count = 0
+    clients = {}
 
-    # Parcourir tous les paquets capturés
     for pkt in packets:
-        
-        # Vérifier si le paquet contient une couche "deauth"
+
+        # 🔹 Détection deauth
         if pkt.haslayer(Dot11Deauth):
-            count += 1   # Si oui → incrémenter
+            deauth_count += 1
 
-    # Afficher le nombre total détecté
-    print(f"Nombre de trames de deauth détectées : {count}")
+        # 🔹 Détection probe requests
+        if pkt.haslayer(Dot11ProbeReq):
+            probe_count += 1
 
-    # Règle simple de détection (seuil)
-    if count > 20:
-        print("ALERTE : Attaque possible de désauthentification !")
-    else:
-        print("Pas d'activité suspecte détectée.")
+        # 🔹 Analyse activité client
+        if pkt.haslayer(Dot11):
+            src = pkt.addr2  # MAC source
+
+            if src:
+                if src not in clients:
+                    clients[src] = 0
+                clients[src] += 1
+
+    # ===== RESULTATS =====
+
+    print("\n=== ANALYSE DU TRAFIC ===")
+
+    print(f"Deauth frames : {deauth_count}")
+    print(f"Probe requests : {probe_count}")
+
+    # 🔹 Alertes
+    if deauth_count > 20:
+        print("ALERTE : Attaque de désauthentification possible")
+
+    if probe_count > 50:
+        print("ALERTE : Probe flood détecté")
+
+    # 🔹 Analyse clients
+    print("\n=== ACTIVITÉ CLIENTS ===")
+
+    for client, count in clients.items():
+        if count > 100:
+            print(f"Client suspect : {client} ({count} paquets)")
 
 
-# Point d'entrée du script
 if __name__ == "__main__":
-    
-    # Ici tu mets le chemin vers ton fichier capture
-    detect_deauth("captures/capture-01.cap")
+    analyze_pcap("captures/capture-01.cap")
